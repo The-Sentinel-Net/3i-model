@@ -4504,10 +4504,11 @@ function setRailExpanded(expanded){
     if(!bezelRight) return;
     bezelRight.classList.toggle('expanded', expanded);
     document.body.classList.toggle('rail-expanded', expanded);
-    document.documentElement.style.setProperty(
-      '--bezel-right',
-      expanded ? 'var(--bezel-right-expanded)' : '56px'
-    );
+    if(expanded){
+      document.documentElement.style.setProperty('--bezel-right', 'var(--bezel-right-expanded)');
+    } else {
+      document.documentElement.style.removeProperty('--bezel-right');
+    }
   } catch(e) { /* TDZ: bezelRight not yet initialized */ }
 }
 function toggleRail(){
