@@ -1788,7 +1788,7 @@ window.addEventListener('mousemove', e=>{
 container.addEventListener('contextmenu', e=>e.preventDefault());
 container.addEventListener('wheel', e=>{
   e.preventDefault();
-  orbit.dist = Math.max(3.5, Math.min(140, orbit.dist + e.deltaY*0.018));
+  orbit.dist = Math.max(3.5, Math.min(250, orbit.dist + e.deltaY*0.018));
 }, {passive:false});
 
 let lastTouchDist = 0;
@@ -1812,9 +1812,8 @@ container.addEventListener('touchstart', e=>{
   else if(e.touches.length===2){
     orbit.dragging=false;
     orbit.panning=true;
-    const dx = e.touches[0].clientX-e.touches[1].clientX;
-    const dy = e.touches[0].clientY-e.touches[1].clientY;
-    lastTouchDist = Math.sqrt(dx*dx+dy*dy);
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    lastTouchDist = d;
     touchPanX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
     touchPanY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     touchStart = null; // pinch is never a tap
@@ -1835,10 +1834,8 @@ container.addEventListener('touchmove', e=>{
     }
   } else if(e.touches.length===2 && orbit.panning){
     // Zoom (pinch)
-    const dx = e.touches[0].clientX-e.touches[1].clientX;
-    const dy = e.touches[0].clientY-e.touches[1].clientY;
-    const d = Math.sqrt(dx*dx+dy*dy);
-    orbit.dist = Math.max(3.5, Math.min(140, orbit.dist + (lastTouchDist-d)*0.06));
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    orbit.dist = Math.max(3.5, Math.min(250, orbit.dist + (lastTouchDist-d)*0.06));
     lastTouchDist = d;
     
     // Pan (2-finger drag)
@@ -1884,8 +1881,8 @@ container.addEventListener('touchend', e=>{
 });
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.18));
-const sunLight = new THREE.PointLight(C.sun, 1.8, 100);
-sunLight.position.set(-26, 0, 0);
+const sunLight = new THREE.PointLight(C.sun, 1.8, 0);
+sunLight.position.set(0, 0, 0);
 scene.add(sunLight);
 const fill = new THREE.DirectionalLight(0x88BFBC, 0.32);
 fill.position.set(8, 5, 4); scene.add(fill);
@@ -2748,7 +2745,7 @@ scene.add(solarWind);
 
 // SUN
 const sunGroup = new THREE.Group();
-sunGroup.position.set(-26, 0, 0);
+sunGroup.position.set(0, 0, 0);
 scene.add(sunGroup);
 sunGroup.add(new THREE.Mesh(new THREE.SphereGeometry(1.4, 32, 22), new THREE.MeshBasicMaterial({color: C.sun})));
 const sunGlow1 = new THREE.Mesh(new THREE.SphereGeometry(2.5, 24, 16), new THREE.MeshBasicMaterial({color: C.sun, transparent:true, opacity:0.28, side:THREE.BackSide, blending:THREE.AdditiveBlending}));
@@ -2830,7 +2827,7 @@ function makeTextSprite(text, color='#FF6A1A', size=24){
 }
 
 const sunLabel = makeTextSprite('SUN ⊙', '#FF6A1A', 32);
-sunLabel.position.set(-26, -3.4, 0);
+sunLabel.position.set(0, -3.4, 0);
 scene.add(sunLabel);
 const sunwardLabel = makeTextSprite('← SUNWARD', '#FF6A1A', 22);
 sunwardLabel.position.set(-13, 1.5, 0); sunwardLabel.scale.set(2.4, 0.6, 1);
@@ -2911,24 +2908,43 @@ rtnGroup.add(buildVector(new THREE.Vector3(-1,0,0), 0xFF4F00, '← TO SUN', 7));
 }
 
 // Trajectory
+let dynamicMarker;
+let dynamicLabel;
+
 function buildTrajectory(){
-  const e = 1.95, q = 4.0;
+  // True orbital parameters: e=6.145, q=1.356
+  const e = 6.145, q = 1.356;
+  const AU_TO_SCENE = 22.0;
+  
+  // Orbital plane basis vectors derived from K05 (perihelion) & K04 (Mars flyby) ephemeris
+  const P = new THREE.Vector3(0.9679, 0.0672, -0.2422);
+  const Q = new THREE.Vector3(0.2458, -0.0525, 0.9679);
+
   const a = q/(e-1);
-  const N = 240;
+  const p_param = a*(e*e - 1);
+  
+  const N = 400;
   const path = [];
   const thetaInf = Math.acos(-1/e);
-  const thetaMax = thetaInf*0.92;
-  const incl = (180-175)*Math.PI/180;
+  const thetaMax = thetaInf * 0.90;
+  
   for(let i=0; i<=N; i++){
     const f = -thetaMax + (i/N)*2*thetaMax;
-    const r = a*(e*e-1)/(1+e*Math.cos(f));
-    const x_orb = r*Math.cos(f), y_orb = r*Math.sin(f);
-    path.push(new THREE.Vector3(x_orb, y_orb*Math.sin(incl), y_orb*Math.cos(incl)));
+    const r_au = p_param / (1 + e*Math.cos(f));
+    const r_scene = r_au * AU_TO_SCENE;
+    
+    const pos = new THREE.Vector3()
+      .addScaledVector(P, r_scene * Math.cos(f))
+      .addScaledVector(Q, r_scene * Math.sin(f));
+      
+    path.push(pos);
   }
+  
   const peri = Math.floor(N/2);
   trajectoryGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(path.slice(0, peri+1)), new THREE.LineBasicMaterial({color: C.orange, transparent:true, opacity:0.75})));
   trajectoryGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(path.slice(peri)), new THREE.LineBasicMaterial({color: C.teal, transparent:true, opacity:0.85})));
   trajectoryGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 24, 16), new THREE.MeshBasicMaterial({color: C.sun})));
+  
   function addOrbit(r, color, opacity, label){
     const pts = [];
     for(let i=0; i<=64; i++){
@@ -2940,10 +2956,13 @@ function buildTrajectory(){
     sp.position.set(r*0.92, 0, r*0.45); sp.scale.set(1.6, 0.4, 1);
     trajectoryGroup.add(sp);
   }
-  addOrbit(2.4, 0x9B7B5C, 0.35, 'MERCURY');
-  addOrbit(3.3, 0x5BA3D0, 0.45, 'EARTH');
-  addOrbit(5.0, 0xC0635A, 0.4, 'MARS');
-  addOrbit(17, 0xC9A06A, 0.5, 'JUPITER');
+  
+  addOrbit(0.387 * AU_TO_SCENE, 0x9B7B5C, 0.35, 'MERCURY');
+  addOrbit(0.723 * AU_TO_SCENE, 0x8C7C50, 0.35, 'VENUS');
+  addOrbit(1.0 * AU_TO_SCENE, 0x5BA3D0, 0.45, 'EARTH');
+  addOrbit(1.524 * AU_TO_SCENE, 0xC0635A, 0.4, 'MARS');
+  addOrbit(5.204 * AU_TO_SCENE, 0xC9A06A, 0.5, 'JUPITER');
+  
   function marker(p, color, label){
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 8), new THREE.MeshBasicMaterial({color}));
     m.position.copy(p); trajectoryGroup.add(m);
@@ -2951,10 +2970,23 @@ function buildTrajectory(){
     sp.position.copy(p.clone().add(new THREE.Vector3(0, 0.7, 0))); sp.scale.set(2.4, 0.55, 1);
     trajectoryGroup.add(sp);
   }
+  
+  // Re-add the static entry and exit markers using the new true path
   marker(path[0], 0xFF4F00, 'ENTRY · MAY 2025');
   marker(path[peri], 0xFF4F00, 'PERIHELION · OCT 29 · 1.36 AU');
-  marker(new THREE.Vector3(Math.cos(0.85)*17, 0, Math.sin(0.85)*17), 0xC9A06A, 'JUPITER FLYBY · MAR 16 2026');
-  marker(path[Math.floor(N*0.82)], 0x45A29E, '3I/ATLAS · NOW');
+  marker(path[Math.floor(N*0.88)], 0xC9A06A, 'JUPITER FLYBY · MAR 16 2026');
+  
+  // Create the dynamic marker that tracks current keyframe
+  dynamicMarker = new THREE.Group();
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 8), new THREE.MeshBasicMaterial({color: 0x45A29E}));
+  dynamicMarker.add(m);
+  
+  dynamicLabel = makeTextSprite('3I/ATLAS', '#45A29E', 24);
+  dynamicLabel.position.set(0, 1.4, 0); 
+  dynamicLabel.scale.set(4.2, 1.0, 1);
+  dynamicMarker.add(dynamicLabel);
+  
+  trajectoryGroup.add(dynamicMarker);
 }
 buildTrajectory();
 
@@ -3194,21 +3226,21 @@ function setMode(mode){
     sunGroup.visible = true; sunLabel.visible = true; sunwardLabel.visible = true; antiSunLabel.visible = true; sunArrow.visible = true;
     setLayerToggle('internals', false);
     setLayerToggle('rtn', false);
-    setPhaseLabel(); orbit.target.set(0,0,0);
+    setPhaseLabel(); orbit.target.copy(root.position);
   } else if(mode === 'cutaway'){
     trajectoryGroup.visible = false; envelopes.visible = false; spin.visible = true;
     sunGroup.visible = false; sunLabel.visible = false; sunwardLabel.visible = false; antiSunLabel.visible = false; sunArrow.visible = false;
     setLayerToggle('internals', true);
     setLayerToggle('rtn', false);
     if(phaseTextEl) phaseTextEl.textContent = 'INTERNAL ARCHITECTURE · CUTAWAY';
-    orbit.target.set(0,0,0);
+    orbit.target.copy(root.position);
   } else if(mode === 'thermal'){
     trajectoryGroup.visible = false; envelopes.visible = true; spin.visible = true;
     sunGroup.visible = true; sunLabel.visible = true; sunwardLabel.visible = true; antiSunLabel.visible = true; sunArrow.visible = true;
     setLayerToggle('internals', false);
     setLayerToggle('rtn', false);
     if(phaseTextEl) phaseTextEl.textContent = 'THERMAL IR · IRON PALETTE · BT.709 LUMINANCE';
-    orbit.target.set(0,0,0);
+    orbit.target.copy(root.position);
     // Engage thermal IR shader pass
     if(lensPass) lensPass.uniforms.uThermal.value = 1.0;
     // Boost bloom slightly so hot features (jets, sun, anti-tail throat) saturate the IR sensor
@@ -3219,7 +3251,7 @@ function setMode(mode){
     setLayerToggle('internals', false);
     setLayerToggle('rtn', true);
     if(phaseTextEl) phaseTextEl.textContent = 'RTN FRAME · JET 2 ALIGNED WITH TRANSVERSE 0.5°';
-    orbit.target.set(0,0,0);
+    orbit.target.copy(root.position);
   } else if(mode === 'trajectory'){
     trajectoryGroup.visible = true; envelopes.visible = false; spin.visible = false;
     sunGroup.visible = false; sunLabel.visible = false; sunwardLabel.visible = false; antiSunLabel.visible = false; sunArrow.visible = false;
@@ -3258,11 +3290,8 @@ function eclipticToScene(arr3){
   return new THREE.Vector3(-arr3[0], arr3[2], arr3[1]);
 }
 
-// Sun-position tween state. Target updates on keyframe change; current lerps toward target each frame.
-const SUN_DIST_BASE = 22;   // scene units per AU baseline
-const SUN_DIST_SLOPE = 3;   // AU-to-scene scaling for distance modulation
-const sunTargetPos = new THREE.Vector3(-26, 0, 0);
-const sunCurrentPos = new THREE.Vector3(-26, 0, 0);
+// Scale: 1 AU = 22 scene units
+const AU_SCENE_SCALE = 22.0;
 
 // Body-orientation tween state. Stores the "base" rotation that aligns body +X with antisun.
 const bodyTargetQuat = new THREE.Quaternion();   // target alignment from active keyframe
@@ -3274,20 +3303,42 @@ const bowShockTargetQuat = new THREE.Quaternion();
 const bowShockCurrentQuat = new THREE.Quaternion();
 const _BOWSHOCK_APEX_REF = new THREE.Vector3(-1, 0, 0);
 
-// Update target sun position + body alignment when keyframe changes
+// Target position for the comet in world space (sun is at origin)
+const cometTargetPos = new THREE.Vector3();
+const cometCurrentPos = new THREE.Vector3();
+// Legacy alias for trajectory marker (same data, used by dynamicMarker)
+const trajectoryMarkerTarget = cometTargetPos;
+const trajectoryMarkerCurrent = cometCurrentPos;
+
+// Update body alignment + comet orbital position when keyframe changes
 function updateSceneToKeyframe(kf){
   if(!kf) return;
   // Anti-sunward direction in scene = direction of body's heliocentric position from sun
   const antisun = eclipticToScene(kf.helioPos).normalize();
   // Sun direction from body = opposite of antisun
   const sunDir = antisun.clone().negate();
-  // Distance modulation: closer at perihelion, farther at Jupiter, but kept visible
-  const sunDist = SUN_DIST_BASE + kf.rAU * SUN_DIST_SLOPE;
-  sunTargetPos.copy(sunDir).multiplyScalar(sunDist);
   // Body target rotation: align body +X with antisun direction
   bodyTargetQuat.setFromUnitVectors(_ANTISUN_REF, antisun);
   // Bow shock target: align local -X (apex) with sun direction
   bowShockTargetQuat.setFromUnitVectors(_BOWSHOCK_APEX_REF, sunDir);
+  
+  // Set comet's orbital position in world space (sun at origin)
+  cometTargetPos.copy(eclipticToScene(kf.helioPos)).multiplyScalar(AU_SCENE_SCALE);
+  
+  // Generate label with current date
+  if(dynamicLabel && kf.dateLabel){
+    const canvas = dynamicLabel.material.map.image;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `24px var(--font-mono)`;
+    ctx.fillStyle = '#4DE3E0';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#4DE3E0';
+    ctx.shadowBlur = 6;
+    ctx.fillText('3I/ATLAS · ' + kf.dateLabel, 128, 32);
+    dynamicLabel.material.map.needsUpdate = true;
+  }
 }
 
 // Map old phase names to keyframe indices for backwards compat
@@ -3487,7 +3538,9 @@ function setPhaseLabel(){
 populatePills();
 setKeyframe(currentKeyframeIdx);
 // Snap initial state to target so first frame doesn't animate from default
-sunCurrentPos.copy(sunTargetPos);
+cometCurrentPos.copy(cometTargetPos);
+root.position.copy(cometCurrentPos);
+orbit.target.copy(root.position);
 bodyBaseQuat.copy(bodyTargetQuat);
 bowShockCurrentQuat.copy(bowShockTargetQuat);
 applyState();
@@ -3651,32 +3704,40 @@ function animate(){
   // All transitions lerp/slerp smoothly when keyframe changes.
   // ============================================================
 
-  // Lerp sun position toward keyframe target (5%/frame ≈ 0.5s convergence at 60fps)
-  sunCurrentPos.lerp(sunTargetPos, 0.06);
+  // Lerp comet position toward keyframe orbital target
+  const prevCometPos = cometCurrentPos.clone();
+  cometCurrentPos.lerp(cometTargetPos, 0.06);
+  
+  // Move the comet root group to its actual orbital position (sun stays at origin)
+  root.position.copy(cometCurrentPos);
+  
+  // Camera follows comet: apply the frame's delta to orbit.target
   if(currentMode !== 'trajectory'){
-    sunGroup.position.copy(sunCurrentPos);
-    sunLight.position.copy(sunCurrentPos);
-    // Update sun arrow + labels along the actual sun direction
-    const sunDist = sunCurrentPos.length();
-    if(sunDist > 0.001){
-      const sunDir = sunCurrentPos.clone().normalize();
-      // Sun arrow: from body-near to sun-near, rebuild geometry
-      const arrowStart = sunDir.clone().multiplyScalar(PLASMA_R + 0.5);
-      const arrowEnd   = sunDir.clone().multiplyScalar(Math.min(sunDist - 4, sunDist * 0.85));
+    const posDelta = cometCurrentPos.clone().sub(prevCometPos);
+    orbit.target.add(posDelta);
+    
+    // Sun direction from comet's perspective (sun is at world origin)
+    const toSun = new THREE.Vector3(0,0,0).sub(cometCurrentPos);
+    const distToSun = toSun.length();
+    if(distToSun > 0.001){
+      const sunDir = toSun.clone().normalize();
+      // Sun arrow in world space: from comet edge toward sun
+      const arrowStart = cometCurrentPos.clone().add(sunDir.clone().multiplyScalar(PLASMA_R + 0.5));
+      const arrowEnd   = cometCurrentPos.clone().add(sunDir.clone().multiplyScalar(Math.min(distToSun - 4, distToSun * 0.85)));
       sunArrow.geometry.setFromPoints([arrowStart, arrowEnd]);
       sunArrow.computeLineDistances();
-      // Labels: halfway points along sun and antisun directions
-      sunwardLabel.position.copy(sunDir).multiplyScalar(13);
-      sunwardLabel.position.y += 1.5;  // small vertical offset for readability
-      antiSunLabel.position.copy(sunDir).multiplyScalar(-13);
+      // Labels in world space, offset from comet
+      sunwardLabel.position.copy(cometCurrentPos).add(sunDir.clone().multiplyScalar(13));
+      sunwardLabel.position.y += 1.5;
+      antiSunLabel.position.copy(cometCurrentPos).add(sunDir.clone().negate().multiplyScalar(13));
       antiSunLabel.position.y += 1.5;
     }
   }
 
-  // Update hull shader uniforms (sun position for lighting, camera for fresnel/spec)
+  // Update hull shader uniforms (sun position in comet-local space for lighting)
   if(hullSharedUniforms){
-    hullSharedUniforms.uSunPos.value.copy(sunCurrentPos);
-    hullSharedUniforms.uCamPos.value.copy(camera.position);
+    hullSharedUniforms.uSunPos.value.set(0,0,0).sub(root.position); // sun in root-local space
+    hullSharedUniforms.uCamPos.value.copy(camera.position).sub(root.position); // camera in root-local
     hullSharedUniforms.uTime.value = t;
   }
 
@@ -3684,6 +3745,11 @@ function animate(){
   bodyBaseQuat.slerp(bodyTargetQuat, 0.06);
   // Slerp bow shock orientation toward target
   bowShockCurrentQuat.slerp(bowShockTargetQuat, 0.06);
+
+  // Dynamic trajectory marker tracks comet's world position
+  if (dynamicMarker) {
+    dynamicMarker.position.copy(cometCurrentPos);
+  }
 
   // Apply bow shock orientation (in world frame, since envelopes is at root)
   bowShock.quaternion.copy(bowShockCurrentQuat);
@@ -3973,7 +4039,7 @@ function animate(){
     lensPass.uniforms.uTime.value = t;
     // In thermal mode, project sun position to screen UV for radiative heating bias
     if(currentMode === 'thermal'){
-      const sunWorld = sunCurrentPos.clone();
+      const sunWorld = new THREE.Vector3(0, 0, 0); // sun is at world origin
       const sunNDC = sunWorld.project(camera);
       // NDC is [-1, 1]; convert to UV [0, 1]
       const sx = (sunNDC.x + 1.0) * 0.5;
