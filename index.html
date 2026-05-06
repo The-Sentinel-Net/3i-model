@@ -1793,10 +1793,14 @@ container.addEventListener('wheel', e=>{
 
 let lastTouchDist = 0;
 let touchStart = null; // for tap detection on the 3D scene
+let touchPanX = 0;
+let touchPanY = 0;
+
 container.addEventListener('touchstart', e=>{
   try { if(camTween) camTween.active = false; } catch(e) {}
   if(e.touches.length===1){
     orbit.dragging=true;
+    orbit.panning=false;
     orbit.lx=e.touches[0].clientX;
     orbit.ly=e.touches[0].clientY;
     touchStart = {
@@ -1806,12 +1810,17 @@ container.addEventListener('touchstart', e=>{
     };
   }
   else if(e.touches.length===2){
+    orbit.dragging=false;
+    orbit.panning=true;
     const dx = e.touches[0].clientX-e.touches[1].clientX;
     const dy = e.touches[0].clientY-e.touches[1].clientY;
     lastTouchDist = Math.sqrt(dx*dx+dy*dy);
+    touchPanX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    touchPanY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
     touchStart = null; // pinch is never a tap
   }
 }, {passive:false});
+
 container.addEventListener('touchmove', e=>{
   e.preventDefault();
   if(e.touches.length===1 && orbit.dragging){
@@ -1824,17 +1833,37 @@ container.addEventListener('touchmove', e=>{
       const moved = Math.hypot(e.touches[0].clientX - touchStart.x, e.touches[0].clientY - touchStart.y);
       if(moved > 8) touchStart = null;
     }
-  } else if(e.touches.length===2){
+  } else if(e.touches.length===2 && orbit.panning){
+    // Zoom (pinch)
     const dx = e.touches[0].clientX-e.touches[1].clientX;
     const dy = e.touches[0].clientY-e.touches[1].clientY;
     const d = Math.sqrt(dx*dx+dy*dy);
     orbit.dist = Math.max(3.5, Math.min(140, orbit.dist + (lastTouchDist-d)*0.06));
     lastTouchDist = d;
+    
+    // Pan (2-finger drag)
+    const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    const panX = cx - touchPanX;
+    const panY = cy - touchPanY;
+    
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
+    
+    // Pan speed scales with distance for consistent feel
+    const panSpeed = orbit.dist * 0.0015;
+    orbit.target.addScaledVector(right, -panX * panSpeed);
+    orbit.target.addScaledVector(up, panY * panSpeed);
+    
+    touchPanX = cx;
+    touchPanY = cy;
     touchStart = null;
   }
 }, {passive:false});
+
 container.addEventListener('touchend', e=>{
   orbit.dragging=false;
+  orbit.panning=false;
   // Tap detection: short, minimal movement = tap → open inspector
   if(touchStart && e.changedTouches.length === 1){
     const moved = Math.hypot(e.changedTouches[0].clientX - touchStart.x,
