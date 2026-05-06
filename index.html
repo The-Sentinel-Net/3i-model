@@ -4565,6 +4565,14 @@ if(pcJump) pcJump.addEventListener('click', ()=>{
   const targetCycle = currentCycle + (cyclesUntilFan === 0 ? 5 : cyclesUntilFan);
   const targetT = targetCycle * masterPeriod + 0.05;
   timeOffset += (targetT - simT);
+  
+  // Hard snap camera on jump so it doesn't get left behind
+  if(activeKeyframe){
+     updateSceneToKeyframe(activeKeyframe);
+     cometCurrentPos.copy(cometTargetPos);
+     root.position.copy(cometCurrentPos);
+     orbit.target.copy(root.position);
+  }
 });
 
 // Initialize play state to "playing" so the icon shows pause
