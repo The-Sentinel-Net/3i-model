@@ -4537,10 +4537,22 @@ function setPlaying(p){
 }
 if(pcPlay) pcPlay.addEventListener('click', ()=> setPlaying(!isPlaying));
 if(pcPrev) pcPrev.addEventListener('click', ()=>{
-  if(currentKeyframeIdx > 0) setKeyframe(currentKeyframeIdx - 1);
+  if(currentKeyframeIdx > 0){
+    setKeyframe(currentKeyframeIdx - 1);
+    // Snap camera and position so it doesn't float away
+    cometCurrentPos.copy(cometTargetPos);
+    root.position.copy(cometCurrentPos);
+    orbit.target.copy(root.position);
+  }
 });
 if(pcNext) pcNext.addEventListener('click', ()=>{
-  if(currentKeyframeIdx < KEYFRAMES.length - 1) setKeyframe(currentKeyframeIdx + 1);
+  if(currentKeyframeIdx < KEYFRAMES.length - 1){
+    setKeyframe(currentKeyframeIdx + 1);
+    // Snap camera and position so it doesn't float away
+    cometCurrentPos.copy(cometTargetPos);
+    root.position.copy(cometCurrentPos);
+    orbit.target.copy(root.position);
+  }
 });
 if(tcSpeedSel) tcSpeedSel.addEventListener('change', ()=>{
   timeMultiplier = parseFloat(tcSpeedSel.value);
